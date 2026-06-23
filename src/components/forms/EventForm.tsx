@@ -2,13 +2,80 @@ import { useState } from "react"
 import { Calendar, Users, MapPin, Grid, Plus, HelpCircle } from "lucide-react"
 import { ValidationModal, validationRulesMap } from "../ValidationInfo"
 
+import { useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { z } from "zod"
+
+const eventSchema = z.object({
+  title: z
+    .string()
+    .min(5, "Мінімум 5 символів")
+    .max(100, "Не більше 100 символів"),
+
+  date: z
+    .string()
+    .min(1, "Дата є обов'язковою")
+    .refine((val) => {
+      const selectDate = new Date(val)
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+
+      return selectDate > today
+    }, { message: "Дата проведення події має бути в майбутньому" }),
+
+    isOnline: z.boolean(),
+
+    maxParticipants: z
+      .coerce
+      .number()
+      .min(10, "Мінімум 10 учасників")
+      .max(1000, "Максимум 1000 учасників"),
+
+    category: z.string().min(1, "Оберіть категорію події"),
+
+    location: z.string().optional(),
+})
+.superRefine((data, ctx) => {
+  if (!data.isOnline && (!data.location || data.location.trim().length < 5)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Адреса обов'язкова для офлайн подій (мінімум 5 символів)",
+      path: ["location"],
+    })
+  }
+})
+
 export function EventForm() {
   const [isModalOpen, setIsModalOpen] = useState(false)
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    alert("Подію створено! (Тут має бути інтегрований RHF)")
-  }
+  const {
+    register,
+    handleSubmit,
+    watch,
+    formState: { errors },
+  } = useForm({
+    resolver: zodResolver(eventSchema),
+    defaultValues: {
+      title: "",
+      date: "",
+      isOnline: false,
+      location: "",
+      maxParticipants: 10,
+      category: "",
+    },
+  })
+
+  const isOnlineSelected = watch("isOnline")
+
+  const onFormSubmit = (data: any) => {
+  console.log("Дані форми валідні та успішно зібрані:", data)
+  alert(`Подію "${data.title}" успішно створено!`)
+}
+
+  // const handleSubmit = (e: React.FormEvent) => {
+  //   e.preventDefault()
+  //   alert("Подію створено! (Тут має бути інтегрований RHF)")
+  // }
 
   return (
     <div className="w-full rounded-xl border border-border bg-card p-6 text-card-foreground shadow-sm">
@@ -32,18 +99,21 @@ export function EventForm() {
         </button>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit(onFormSubmit)} className="space-y-4">
         {/* Поле: Назва події */}
         <div className="flex flex-col gap-1.5">
           <label htmlFor="evt-title" className="text-sm font-semibold">Назва події</label>
           <input
             id="evt-title"
-            name="title"
+            // name="title"
             type="text"
             placeholder="React Meetup Kyiv"
             className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 dark:bg-slate-950"
-            // TODO: Підключити register("title")
+            {...register("title")}
           />
+           {errors.title && (
+            <p className="text-xs font-semibold text-red-500">{errors.title.message}</p>
+          )}
           {/* TODO: Відобразити помилку errors.title.message */}
         </div>
 
@@ -54,28 +124,35 @@ export function EventForm() {
           </label>
           <input
             id="evt-date"
-            name="date"
+            // name="date"
             type="date"
             className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 dark:bg-slate-950"
+            {...register("date")}
             // TODO: Підключити register("date")
           />
+          {errors.date && (
+            <p className="text-xs font-semibold text-red-500">{errors.date.message}</p>
+          )}
           {/* TODO: Відобразити помилку errors.date.message */}
         </div>
 
         {/* Поле: Локація */}
-        <div className="flex flex-col gap-1.5">
+        <div className={`flex flex-col gap-1.5 transition-opacity ${isOnlineSelected ? "opacity-50" : ""}`}>
           <label htmlFor="evt-location" className="text-sm font-semibold flex items-center gap-2">
             <MapPin className="h-4 w-4 text-muted-foreground" /> Місце проведення (Адреса)
           </label>
           <input
             id="evt-location"
-            name="location"
             type="text"
-            placeholder="Київ, вул. Хрещатик, 1"
-            className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 dark:bg-slate-950"
-            // TODO: Підключити register("location")
+            disabled={isOnlineSelected}
+            placeholder={isOnlineSelected ? "Подія відбудеться онлайн" : "Київ, вул. Хрещатик, 1"}
+            className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 dark:bg-slate-950 disabled:bg-muted/50"
+            {...register("location")} 
           />
           {/* TODO: Відобразити помилку errors.location.message */}
+          {errors.location && (
+            <p className="text-xs font-semibold text-red-500">{errors.location.message}</p>
+          )}
         </div>
 
         {/* Поле: Кількість учасників */}
@@ -85,13 +162,17 @@ export function EventForm() {
           </label>
           <input
             id="evt-max"
-            name="maxParticipants"
+            // name="maxParticipants"
             type="number"
             placeholder="100"
             className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 dark:bg-slate-950"
             // TODO: Підключити register("maxParticipants")
+            {...register("maxParticipants")}
           />
           {/* TODO: Відобразити помилку errors.maxParticipants.message */}
+          {errors.maxParticipants && (
+            <p className="text-xs font-semibold text-red-500">{errors.maxParticipants.message}</p>
+          )}
         </div>
 
         {/* Поле: Категорія */}
@@ -101,9 +182,10 @@ export function EventForm() {
           </label>
           <select
             id="evt-category"
-            name="category"
+            // name="category"
             className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 dark:bg-slate-950"
             // TODO: Підключити register("category")
+            {...register("category")}
           >
             <option value="">Оберіть категорію...</option>
             <option value="workshop">Воркшоп</option>
@@ -112,16 +194,20 @@ export function EventForm() {
             <option value="hackathon">Хакатон</option>
           </select>
           {/* TODO: Відобразити помилку errors.category.message */}
+          {errors.category && (
+            <p className="text-xs font-semibold text-red-500">{errors.category.message}</p>
+          )}
         </div>
 
         {/* Чекбокс: Онлайн захід */}
         <div className="flex items-center gap-2 py-1">
           <input
             id="evt-online"
-            name="isOnline"
+            // name="isOnline"
             type="checkbox"
             className="rounded border-input text-purple-600 focus:ring-purple-500 h-4 w-4"
             // TODO: Підключити register("isOnline")
+            {...register("isOnline")}
           />
           <label htmlFor="evt-online" className="text-xs text-muted-foreground cursor-pointer">
             Це онлайн подія (посилання буде надіслано перед заходом)
